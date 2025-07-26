@@ -26,7 +26,7 @@ let nextId = 1;
 // 根路由
 app.get('/', (req, res) => {
   res.render('index', { 
-    title: '多人協作倒計時工具'
+    title: '據點獎勵倒計時管理器'
   });
 });
 
