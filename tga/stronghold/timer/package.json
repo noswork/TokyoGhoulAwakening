@@ -1,0 +1,38 @@
+{
+    "name": "countdown-timer-app",
+    "version": "1.0.0",
+    "description": "多人協作倒計時管理工具 - 支援實時同步的座標倒計時器",
+    "main": "server.js",
+    "scripts": {
+      "start": "node server.js",
+      "dev": "nodemon server.js"
+    },
+    "engines": {
+      "node": ">=18.0.0",
+      "npm": ">=8.0.0"
+    },
+    "dependencies": {
+      "express": "^4.18.2",
+      "hbs": "^4.2.0",
+      "socket.io": "^4.7.2"
+    },
+    "devDependencies": {
+      "nodemon": "^3.0.1"
+    },
+    "keywords": [
+      "countdown",
+      "timer",
+      "realtime",
+      "collaboration",
+      "websocket",
+      "taiwan-time",
+      "railway"
+    ],
+    "author": "Your Name",
+    "license": "MIT",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/yourusername/countdown-timer-app.git"
+    },
+    "homepage": "https://github.com/yourusername/countdown-timer-app#readme"
+  }
