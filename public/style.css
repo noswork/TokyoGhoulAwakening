@@ -439,20 +439,34 @@ body {
     100% { opacity: 1; }
 }
 
-/* Error Messages */
+/* 錯誤消息樣式改進 */
 .error-message {
     background: #fef2f2;
     border: 1px solid var(--danger-color);
     color: var(--danger-color);
-    padding: 12px 16px;
+    padding: 16px 20px;
     border-radius: var(--border-radius);
     margin-top: 12px;
     font-size: 0.875rem;
     display: none;
+    line-height: 1.5;
+    white-space: pre-line; /* 支持換行符 */
 }
 
 .error-message.show {
     display: block;
+    animation: errorSlideIn 0.3s ease-out;
+}
+
+@keyframes errorSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* User Name Modal */
@@ -555,6 +569,29 @@ body {
     border-radius: 50%;
     border: 1px solid var(--border-color);
     flex-shrink: 0;
+}
+
+/* 重複座標高亮動畫 */
+.highlight-duplicate {
+    animation: highlightPulse 0.6s ease-in-out 3;
+    border-color: var(--warning-color) !important;
+    background: #fffbeb !important;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.3) !important;
+}
+
+@keyframes highlightPulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+    }
+    50% {
+        transform: scale(1.02);
+        box-shadow: 0 0 30px rgba(245, 158, 11, 0.5);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+    }
 }
 
 /* Responsive Design */

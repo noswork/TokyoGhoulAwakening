@@ -74,6 +74,21 @@ io.on('connection', (socket) => {
       return;
     }
     
+    // 檢查座標是否重複
+    const existingItem = countdownItems.find(item => item.x === x && item.y === y);
+    if (existingItem) {
+      const remaining = Math.max(0, existingItem.endTime - Date.now());
+      const timeStr = remaining > 0 ? 
+        `${Math.floor(remaining / 60000)}:${Math.floor((remaining % 60000) / 1000).toString().padStart(2, '0')}` : 
+        '已結束';
+      
+      socket.emit('error', { 
+        message: `座標 (${x}, ${y}) 已存在倒計時！\n創建者：${existingItem.createdBy}\n剩餘時間：${timeStr}`,
+        duplicateId: existingItem.id
+      });
+      return;
+    }
+    
     const now = new Date();
     const endTime = new Date(now.getTime() + totalSeconds * 1000);
     
@@ -134,7 +149,7 @@ setInterval(() => {
     io.emit('countdown-list', countdownItems);
     console.log(`清理了 ${initialCount - countdownItems.length} 個過期倒計時項目`);
   }
-}, 10000); // 每10秒檢查一次
+}, 30000); // 每30秒檢查一次
 
 // 健康檢查端點
 app.get('/health', (req, res) => {
@@ -147,10 +162,30 @@ app.get('/health', (req, res) => {
   });
 });
 
+// 錯誤處理中間件
+app.use((err, req, res, next) => {
+  console.error('服務器錯誤:', err.stack);
+  res.status(500).json({ error: '內部服務器錯誤' });
+});
+
+// 404 處理
+app.use((req, res) => {
+  res.status(404).json({ error: '頁面不存在' });
+});
+
 // 啟動服務器 - Railway 兼容
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 多人協作倒計時工具運行在端口 ${PORT}`);
   console.log(`📅 服務器時間: ${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}`);
   console.log(`🌍 環境: ${process.env.NODE_ENV || 'development'}`);
+});
+
+// 優雅關閉
+process.on('SIGTERM', () => {
+  console.log('收到 SIGTERM 信號，正在關閉服務器...');
+  server.close(() => {
+    console.log('服務器已關閉');
+    process.exit(0);
+  });
 });

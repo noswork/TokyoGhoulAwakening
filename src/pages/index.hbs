@@ -18,8 +18,8 @@
     <!-- User Name Modal -->
     <div id="user-modal" class="modal-overlay">
         <div class="modal">
-            <h3>歡迎</h3>
-            <p>請輸入你的名字</p>
+            <h3>👋 歡迎使用倒計時工具</h3>
+            <p>請輸入你的名字，其他用戶將會看到</p>
             <input type="text" id="user-name-input" class="form-input" placeholder="輸入你的名字" maxlength="20">
             <button id="confirm-name" class="btn-primary">確認</button>
             <button id="random-name" class="random-name-btn">🎲 隨機生成名字</button>
@@ -29,7 +29,8 @@
     <div class="container">
         <!-- Header -->
         <header class="header">
-            <h1>據點獎勵倒計時管理器</h1>
+            <h1>⏰ 多人協作倒計時工具</h1>
+            <p>輸入座標和時間，即時同步倒計時管理</p>
         </header>
 
         <!-- Main Content -->
@@ -44,7 +45,7 @@
                 </div>
 
                 <div class="form-section">
-                    <h3>新增</h3>
+                    <h3>🎯 新增倒計時</h3>
                     <form id="countdown-form">
                         <div class="form-grid">
                             <div class="form-group">
@@ -67,7 +68,7 @@
                         </div>
                         
                         <button type="submit" class="btn-primary">
-                            ➕ 新增
+                            ➕ 開始倒計時
                         </button>
                     </form>
                     
@@ -77,7 +78,7 @@
                 <div class="form-section">
                     <h3>🔧 管理工具</h3>
                     <button id="clear-all-btn" class="btn-danger" style="width: 100%;">
-                        🗑️ 清除全部
+                        🗑️ 清空所有倒計時
                     </button>
                 </div>
             </div>
@@ -85,7 +86,7 @@
             <!-- Status Panel -->
             <div class="status-panel">
                 <div class="status-header">
-                    <h3>列表</h3>
+                    <h3>📊 倒計時列表</h3>
                     <div class="connection-status">
                         <div class="status-indicator" id="connection-indicator"></div>
                         <span id="connection-text">載入中...</span>
@@ -267,6 +268,12 @@
                     // 錯誤處理
                     this.socket.on('error', (data) => {
                         this.showError(data.message);
+                        
+                        // 如果服務器提供了重複項目的ID，高亮顯示
+                        if (data.duplicateId) {
+                            this.highlightDuplicateItem(data.duplicateId);
+                        }
+                        
                         console.error('❌ 服務器錯誤:', data.message);
                     });
 
@@ -295,6 +302,33 @@
                             this.socket.emit('clear-all');
                         }
                     });
+
+                    // 座標輸入實時檢查
+                    const coordXInput = document.getElementById('coord-x');
+                    const coordYInput = document.getElementById('coord-y');
+                    
+                    const checkCoordinates = () => {
+                        const x = parseInt(coordXInput.value);
+                        const y = parseInt(coordYInput.value);
+                        
+                        if (!isNaN(x) && !isNaN(y)) {
+                            const existing = this.countdowns.find(c => c.x === x && c.y === y);
+                            if (existing) {
+                                coordXInput.style.borderColor = '#f59e0b';
+                                coordYInput.style.borderColor = '#f59e0b';
+                                coordXInput.style.backgroundColor = '#fffbeb';
+                                coordYInput.style.backgroundColor = '#fffbeb';
+                            } else {
+                                coordXInput.style.borderColor = '';
+                                coordYInput.style.borderColor = '';
+                                coordXInput.style.backgroundColor = '';
+                                coordYInput.style.backgroundColor = '';
+                            }
+                        }
+                    };
+                    
+                    coordXInput.addEventListener('input', checkCoordinates);
+                    coordYInput.addEventListener('input', checkCoordinates);
 
                     // 輸入驗證和格式化
                     const inputs = form.querySelectorAll('input[type="number"]');
@@ -355,6 +389,21 @@
                         return;
                     }
 
+                    // 檢查座標是否重複
+                    const existingCoord = this.countdowns.find(countdown => 
+                        countdown.x === x && countdown.y === y
+                    );
+                    
+                    if (existingCoord) {
+                        const remaining = Math.max(0, existingCoord.endTime - Date.now());
+                        const timeStr = remaining > 0 ? this.formatTime(remaining) : '已結束';
+                        this.showError(`❌ 座標 (${x}, ${y}) 已存在倒計時！\n創建者：${existingCoord.createdBy}\n剩餘時間：${timeStr}`);
+                        
+                        // 高亮顯示重複的項目
+                        this.highlightDuplicateItem(existingCoord.id);
+                        return;
+                    }
+
                     // 檢查是否已連接
                     if (!this.socket.connected) {
                         this.showError('❌ 與服務器斷開連接，請稍後重試');
@@ -380,6 +429,34 @@
                         return;
                     }
                     this.socket.emit('remove-countdown', { id });
+                }
+
+                // 高亮顯示重複的倒計時項目
+                highlightDuplicateItem(id) {
+                    const itemElement = document.querySelector(`[data-countdown-id="${id}"]`);
+                    if (itemElement) {
+                        // 移除可能存在的高亮類
+                        itemElement.classList.remove('highlight-duplicate');
+                        
+                        // 強制重排以確保動畫重新開始
+                        itemElement.offsetHeight;
+                        
+                        // 添加高亮類
+                        itemElement.classList.add('highlight-duplicate');
+                        
+                        // 滾動到該項目
+                        itemElement.scrollIntoView({ 
+                            behavior: 'smooth', 
+                            block: 'center' 
+                        });
+                        
+                        // 3秒後移除高亮
+                        setTimeout(() => {
+                            if (itemElement) {
+                                itemElement.classList.remove('highlight-duplicate');
+                            }
+                        }, 3000);
+                    }
                 }
 
                 sortCountdowns() {
@@ -547,15 +624,19 @@
                     }
                 }
 
+                // 改進錯誤顯示方法以支持多行文本
                 showError(message) {
                     const errorDiv = document.getElementById('error-message');
-                    errorDiv.textContent = message;
+                    
+                    // 處理換行符
+                    const formattedMessage = message.replace(/\n/g, '<br>');
+                    errorDiv.innerHTML = formattedMessage;
                     errorDiv.classList.add('show');
                     
-                    // 5秒後自動隱藏
+                    // 7秒後自動隱藏（給用戶更多時間閱讀）
                     setTimeout(() => {
                         this.hideError();
-                    }, 5000);
+                    }, 7000);
                 }
 
                 hideError() {
