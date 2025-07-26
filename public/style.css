@@ -597,3 +597,41 @@ body {
         transform: translateX(20px);
     }
 }
+
+/* 更強的防抖動計時器樣式 */
+.countdown-timer {
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-align: center;
+    margin: 12px 0;
+    min-height: 2rem; /* 固定高度 */
+    max-height: 2rem; /* 固定高度 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    letter-spacing: 0.025em;
+    line-height: 1; /* 固定行高 */
+    overflow: hidden; /* 防止內容溢出 */
+    width: 100%; /* 固定寬度 */
+    box-sizing: border-box;
+}
+
+/* 確保倒計時項目高度穩定 */
+.countdown-item {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease; /* 只對陰影和邊框過渡 */
+    position: relative;
+    min-height: 120px; /* 固定最小高度 */
+}
+
+/* 移除可能導致跳動的過渡效果 */
+.countdown-item * {
+    transition: color 0.2s ease; /* 只對顏色過渡 */
+}
