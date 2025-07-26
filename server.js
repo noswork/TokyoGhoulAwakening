@@ -30,50 +30,34 @@ app.get('/', (req, res) => {
   });
 });
 
-// 生成隨機用戶名
-function generateUserName() {
-  const adjectives = ['勤奮的', '聰明的', '快速的', '準確的', '專注的', '創新的', '積極的', '高效的'];
-  const nouns = ['戰士', '工程師', '設計師', '分析師', '專家', '管理者', '開發者', '策略家'];
-  const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  const number = Math.floor(Math.random() * 999) + 1;
-  return `${adjective}${noun}${number}`;
-}
-
-// 生成隨機顏色
-function generateUserColor() {
-  const colors = [
-    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', 
-    '#98D8C8', '#F7DC6F', '#DDA0DD', '#98FB98',
-    '#F0E68C', '#FFB6C1', '#87CEEB', '#DEB887',
-    '#FF9999', '#66B2FF', '#99FF99', '#FFB366'
-  ];
-  return colors[Math.floor(Math.random() * colors.length)];
-}
-
 // Socket.IO 連接處理
 io.on('connection', (socket) => {
   console.log('新用戶連接:', socket.id);
   
-  // 為新用戶生成身份
+  // 初始化用戶信息
   socket.user = {
     id: socket.id,
-    name: generateUserName(),
-    color: generateUserColor(),
+    name: '未命名用戶',
+    color: '#3b82f6',
     connected: true
   };
-  
-  console.log(`用戶 ${socket.user.name} 已連接`);
   
   // 發送當前所有倒計時項目給新用戶
   socket.emit('countdown-list', countdownItems);
   
-  // 通知其他用戶有新用戶加入
-  socket.broadcast.emit('user-joined', socket.user);
+  // 處理用戶設置信息
+  socket.on('set-user-info', (userInfo) => {
+    socket.user.name = userInfo.name;
+    socket.user.color = userInfo.color;
+    console.log(`用戶 ${socket.user.name} 已連接`);
+    
+    // 通知其他用戶有新用戶加入
+    socket.broadcast.emit('user-joined', socket.user);
+  });
   
   // 處理添加新倒計時
   socket.on('add-countdown', (data) => {
-    const { x, y, minutes, seconds } = data;
+    const { x, y, minutes, seconds, user } = data;
     
     // 數據驗證
     if (typeof x !== 'number' || typeof y !== 'number' || 
@@ -99,8 +83,8 @@ io.on('connection', (socket) => {
       y: y,
       originalDuration: totalSeconds,
       endTime: endTime.getTime(),
-      createdBy: socket.user.name,
-      createdByColor: socket.user.color,
+      createdBy: user ? user.name : socket.user.name,
+      createdByColor: user ? user.color : socket.user.color,
       createdAt: now.getTime()
     };
     
@@ -150,7 +134,7 @@ setInterval(() => {
     io.emit('countdown-list', countdownItems);
     console.log(`清理了 ${initialCount - countdownItems.length} 個過期倒計時項目`);
   }
-}, 5000); // 每5秒檢查一次
+}, 10000); // 每10秒檢查一次
 
 // 健康檢查端點
 app.get('/health', (req, res) => {

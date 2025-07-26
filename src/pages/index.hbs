@@ -5,35 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{title}}</title>
     <link rel="stylesheet" href="/style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Favicon -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><defs><linearGradient id=%22bg%22 x1=%220%25%22 y1=%220%25%22 x2=%22100%25%22 y2=%22100%25%22><stop offset=%220%25%22 style=%22stop-color:%23667eea%22/><stop offset=%22100%25%22 style=%22stop-color:%23764ba2%22/></linearGradient></defs><rect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22url(%23bg)%22/><circle cx=%2216%22 cy=%2216%22 r=%228%22 fill=%22none%22 stroke=%22white%22 stroke-width=%222%22/><path d=%22M16 12v4l3 2%22 stroke=%22white%22 stroke-width=%222%22 stroke-linecap=%22round%22/></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%233b82f6%22/><circle cx=%2216%22 cy=%2216%22 r=%228%22 fill=%22none%22 stroke=%22white%22 stroke-width=%222%22/><path d=%22M16 12v4l3 2%22 stroke=%22white%22 stroke-width=%222%22 stroke-linecap=%22round%22/></svg>">
     
     <!-- Meta Tags -->
     <meta name="description" content="多人協作的實時倒計時工具，支援座標輸入和台灣時間顯示">
     <meta name="keywords" content="倒計時,計時器,多人協作,實時同步,台灣時間">
     <meta name="author" content="Countdown Timer App">
-    
-    <!-- Open Graph -->
-    <meta property="og:title" content="多人協作倒計時工具">
-    <meta property="og:description" content="支援實時同步的座標倒計時管理工具">
-    <meta property="og:type" content="website">
 </head>
 <body>
+    <!-- User Name Modal -->
+    <div id="user-modal" class="modal-overlay">
+        <div class="modal">
+            <h3>👋 歡迎使用倒計時工具</h3>
+            <p>請輸入你的名字，其他用戶將會看到</p>
+            <input type="text" id="user-name-input" class="form-input" placeholder="輸入你的名字" maxlength="20">
+            <button id="confirm-name" class="btn-primary">確認</button>
+            <button id="random-name" class="random-name-btn">🎲 隨機生成名字</button>
+        </div>
+    </div>
+
     <div class="container">
         <!-- Header -->
         <header class="header">
             <h1>⏰ 多人協作倒計時工具</h1>
-            <p>輸入座標和時間，即時同步倒計時管理 🚀</p>
+            <p>輸入座標和時間，即時同步倒計時管理</p>
         </header>
 
         <!-- Main Content -->
         <div class="content">
             <!-- Input Panel -->
             <div class="input-panel">
+                <!-- Current User Info -->
+                <div class="user-info">
+                    <div class="user-color-dot" id="current-user-color"></div>
+                    <span>當前用戶：</span>
+                    <strong id="current-user-name">載入中...</strong>
+                </div>
+
                 <div class="form-section">
                     <h3>🎯 新增倒計時</h3>
                     <form id="countdown-form">
@@ -102,7 +112,80 @@
                 this.socket = io();
                 this.countdowns = [];
                 this.updateInterval = null;
+                this.currentUser = null;
                 
+                this.showUserNameModal();
+            }
+
+            // 顯示用戶名輸入模態框
+            showUserNameModal() {
+                const modal = document.getElementById('user-modal');
+                const nameInput = document.getElementById('user-name-input');
+                const confirmBtn = document.getElementById('confirm-name');
+                const randomBtn = document.getElementById('random-name');
+
+                // 隨機名字生成
+                randomBtn.addEventListener('click', () => {
+                    nameInput.value = this.generateRandomName();
+                });
+
+                // 確認按鈕
+                confirmBtn.addEventListener('click', () => {
+                    const name = nameInput.value.trim();
+                    if (name.length >= 2) {
+                        this.setUserName(name);
+                        modal.style.display = 'none';
+                        this.initializeApp();
+                    } else {
+                        alert('名字至少需要2個字符');
+                    }
+                });
+
+                // Enter 鍵確認
+                nameInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        confirmBtn.click();
+                    }
+                });
+
+                // 自動聚焦
+                nameInput.focus();
+            }
+
+            // 生成隨機用戶名
+            generateRandomName() {
+                const adjectives = ['勤奮的', '聰明的', '快速的', '準確的', '專注的', '創新的', '積極的', '高效的', '友善的', '樂觀的'];
+                const nouns = ['戰士', '工程師', '設計師', '分析師', '專家', '管理者', '開發者', '策略家', '創作者', '探索者'];
+                const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+                const noun = nouns[Math.floor(Math.random() * nouns.length)];
+                const number = Math.floor(Math.random() * 99) + 1;
+                return `${adjective}${noun}${number}`;
+            }
+
+            // 設置用戶名和顏色
+            setUserName(name) {
+                this.currentUser = {
+                    name: name,
+                    color: this.generateUserColor()
+                };
+                
+                // 更新UI顯示
+                document.getElementById('current-user-name').textContent = name;
+                document.getElementById('current-user-color').style.backgroundColor = this.currentUser.color;
+            }
+
+            // 生成用戶顏色
+            generateUserColor() {
+                const colors = [
+                    '#3b82f6', '#ef4444', '#10b981', '#f59e0b', 
+                    '#8b5cf6', '#06b6d4', '#84cc16', '#f97316',
+                    '#ec4899', '#6366f1', '#14b8a6', '#fbbf24'
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            // 初始化應用
+            initializeApp() {
                 this.setupSocketEvents();
                 this.setupUIEvents();
                 this.startUpdating();
@@ -114,6 +197,8 @@
                 // 連接狀態
                 this.socket.on('connect', () => {
                     this.updateConnectionStatus(true);
+                    // 發送用戶信息到服務器
+                    this.socket.emit('set-user-info', this.currentUser);
                     console.log('✅ 已連接到服務器');
                 });
 
@@ -220,13 +305,6 @@
                         }
                     });
                 });
-
-                // 頁面失焦時顯示通知
-                document.addEventListener('visibilitychange', () => {
-                    if (document.hidden && this.countdowns.length > 0) {
-                        console.log('📱 頁面已隱藏，倒計時繼續運行');
-                    }
-                });
             }
 
             addCountdown() {
@@ -258,7 +336,10 @@
                 }
 
                 // 發送到服務器
-                this.socket.emit('add-countdown', { x, y, minutes, seconds });
+                this.socket.emit('add-countdown', { 
+                    x, y, minutes, seconds,
+                    user: this.currentUser
+                });
 
                 // 清空表單
                 document.getElementById('countdown-form').reset();
@@ -334,7 +415,7 @@
 
             createCountdownHTML(countdown, remaining, isExpired, isWarning) {
                 const endTimeStr = this.formatDateTime(new Date(countdown.endTime));
-                const timerText = isExpired ? '⏰ 已結束' : this.formatTime(remaining);
+                const timerText = isExpired ? '已結束' : this.formatTime(remaining);
                 const itemClass = isExpired ? 'expired' : (isWarning ? 'warning' : '');
                 const timerClass = isExpired ? 'expired' : (isWarning ? 'warning' : '');
 
@@ -420,13 +501,6 @@
             console.log('🎯 正在初始化多人協作倒計時工具...');
             window.countdownManager = new CountdownManager();
         });
-
-        // PWA 支援
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                console.log('🔧 Service Worker 支援已檢測');
-            });
-        }
     </script>
 </body>
 </html>
