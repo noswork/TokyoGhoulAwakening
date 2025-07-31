@@ -106,662 +106,482 @@
         </div>
     </div>
 
-    <!-- Socket.IO 客戶端庫 - 確保在腳本前加載 -->
+    <!-- JavaScript -->
     <script>
-        // 檢查 Socket.IO 是否可用
-if (typeof io === 'undefined') {
-    console.log('🔄 正在加載 Socket.IO...');
-    
-    // 動態加載 Socket.IO
-    const script = document.createElement('script');
-    script.src = '/socket.io/socket.io.js';
-    script.onload = function() {
-        console.log('✅ Socket.IO 已加載');
-        initializeApp();
-    };
-    script.onerror = function() {
-        console.error('❌ Socket.IO 加載失敗');
-        document.getElementById('connection-text').textContent = '🔴 連接失敗';
-        document.getElementById('countdown-list').innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">❌</div>
-                <p>無法連接到服務器<br>請刷新頁面重試</p>
-            </div>
-        `;
-    };
-    document.head.appendChild(script);
-} else {
-    console.log('✅ Socket.IO 已可用');
-    initializeApp();
-}
+        // 🔧 最簡化的前端連接邏輯
+        console.log('🎯 開始初始化...');
 
-function initializeApp() {
-    // 多人協作倒計時工具 - 增強連接穩定性
-    class CountdownManager {
-        constructor() {
-            // 🔧 優化 Socket.IO 客戶端配置
-            this.socket = io({
-                transports: ['websocket', 'polling'], // 支持多種傳輸方式
-                upgrade: true,                        // 允許升級
-                rememberUpgrade: true,               // 記住升級
-                timeout: 20000,                      // 連接超時
-                forceNew: false,                     // 不強制新連接
-                reconnection: true,                  // 啟用重連
-                reconnectionDelay: 1000,             // 重連延遲
-                reconnectionAttempts: 10,            // 重連次數
-                reconnectionDelayMax: 5000,          // 最大重連延遲
-                autoConnect: true,                   // 自動連接
-                pingInterval: 25000,                 // ping 間隔
-                pingTimeout: 60000                   // ping 超時
-            });
-            
-            this.countdowns = [];
-            this.updateInterval = null;
-            this.heartbeatInterval = null;
-            this.currentUser = null;
-            this.isConnected = false;
-            this.lastSyncTime = 0;
-            this.connectionAttempts = 0;
-            this.maxConnectionAttempts = 10;
-            
-            this.showUserNameModal();
-        }
-
-        // 顯示用戶名輸入模態框
-        showUserNameModal() {
-            const modal = document.getElementById('user-modal');
-            const nameInput = document.getElementById('user-name-input');
-            const confirmBtn = document.getElementById('confirm-name');
-            const randomBtn = document.getElementById('random-name');
-
-            // 隨機名字生成
-            randomBtn.addEventListener('click', () => {
-                nameInput.value = this.generateRandomName();
-            });
-
-            // 確認按鈕
-            confirmBtn.addEventListener('click', () => {
-                const name = nameInput.value.trim();
-                if (name.length >= 2) {
-                    this.setUserName(name);
-                    modal.style.display = 'none';
-                    this.initializeApp();
-                } else {
-                    alert('名字至少需要2個字符');
-                }
-            });
-
-            // Enter 鍵確認
-            nameInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    confirmBtn.click();
-                }
-            });
-
-            // 自動聚焦
-            nameInput.focus();
-        }
-
-        // 生成隨機用戶名
-        generateRandomName() {
-            const adjectives = ['勤奮的', '聰明的', '快速的', '準確的', '專注的', '創新的', '積極的', '高效的', '友善的', '樂觀的'];
-            const nouns = ['戰士', '工程師', '設計師', '分析師', '專家', '管理者', '開發者', '策略家', '創作者', '探索者'];
-            const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
-            const noun = nouns[Math.floor(Math.random() * nouns.length)];
-            const number = Math.floor(Math.random() * 99) + 1;
-            return `${adjective}${noun}${number}`;
-        }
-
-        // 設置用戶名和顏色
-        setUserName(name) {
-            this.currentUser = {
-                name: name,
-                color: this.generateUserColor()
+        // 檢查 Socket.IO
+        if (typeof io === 'undefined') {
+            console.log('📦 加載 Socket.IO...');
+            const script = document.createElement('script');
+            script.src = '/socket.io/socket.io.js';
+            script.onload = () => {
+                console.log('✅ Socket.IO 加載完成');
+                startApp();
             };
-            
-            // 更新UI顯示
-            document.getElementById('current-user-name').textContent = name;
-            document.getElementById('current-user-color').style.backgroundColor = this.currentUser.color;
-        }
-
-        // 生成用戶顏色
-        generateUserColor() {
-            const colors = [
-                '#3b82f6', '#ef4444', '#10b981', '#f59e0b', 
-                '#8b5cf6', '#06b6d4', '#84cc16', '#f97316',
-                '#ec4899', '#6366f1', '#14b8a6', '#fbbf24'
-            ];
-            return colors[Math.floor(Math.random() * colors.length)];
-        }
-
-        // 初始化應用
-        initializeApp() {
-            this.setupSocketEvents();
-            this.setupUIEvents();
-            this.startUpdating();
-            this.startHeartbeat();
-            
-            console.log('🚀 多人協作倒計時工具已初始化');
-        }
-
-        // 🎯 啟動心跳檢測
-        startHeartbeat() {
-            this.heartbeatInterval = setInterval(() => {
-                if (this.isConnected) {
-                    this.socket.emit('heartbeat');
-                }
-            }, 30000); // 每30秒發送一次心跳
-        }
-
-        setupSocketEvents() {
-            // 🔧 連接成功
-            this.socket.on('connect', () => {
-                this.isConnected = true;
-                this.connectionAttempts = 0;
-                this.updateConnectionStatus(true);
-                console.log(`✅ 已連接到服務器 (Socket ID: ${this.socket.id})`);
-                
-                // 發送用戶信息
-                if (this.currentUser) {
-                    this.socket.emit('set-user-info', this.currentUser);
-                }
-            });
-
-            // 🔧 連接確認
-            this.socket.on('connection-confirmed', (data) => {
-                console.log(`🎉 服務器確認連接: ${data.message}`);
-                this.showTemporaryMessage('🟢 連接成功！');
-            });
-
-            // 🔧 斷線處理
-            this.socket.on('disconnect', (reason) => {
-                this.isConnected = false;
-                this.updateConnectionStatus(false);
-                console.log(`❌ 與服務器斷開連接 (原因: ${reason})`);
-                
-                if (reason === 'io server disconnect') {
-                    // 服務器主動斷開，嘗試重連
-                    console.log('🔄 服務器主動斷開，嘗試重連...');
-                    this.socket.connect();
-                }
-            });
-
-            // 🔧 重連嘗試
-            this.socket.on('reconnect_attempt', (attemptNumber) => {
-                this.connectionAttempts = attemptNumber;
-                console.log(`🔄 重連嘗試 #${attemptNumber}`);
-                document.getElementById('connection-text').textContent = `🔄 重連中... (${attemptNumber}/${this.maxConnectionAttempts})`;
-            });
-
-            // 🔧 重連成功
-            this.socket.on('reconnect', (attemptNumber) => {
-                this.isConnected = true;
-                this.connectionAttempts = 0;
-                this.updateConnectionStatus(true);
-                console.log(`✅ 重連成功 (嘗試了 ${attemptNumber} 次)`);
-                this.showTemporaryMessage('🟢 重新連接成功！');
-                
-                // 重新發送用戶信息並請求同步
-                if (this.currentUser) {
-                    this.socket.emit('set-user-info', this.currentUser);
-                    setTimeout(() => {
-                        this.requestSync();
-                    }, 1000);
-                }
-            });
-
-            // 🔧 重連失敗
-            this.socket.on('reconnect_failed', () => {
-                console.error('❌ 重連失敗，已達到最大嘗試次數');
-                document.getElementById('connection-text').textContent = '🔴 連接失敗';
-                this.showError('❌ 無法連接到服務器，請刷新頁面重試');
-            });
-
-            // 🔧 連接錯誤
-            this.socket.on('connect_error', (error) => {
-                this.isConnected = false;
-                this.updateConnectionStatus(false);
-                console.error('🔌 連接錯誤:', error);
-                
-                if (this.connectionAttempts < this.maxConnectionAttempts) {
-                    document.getElementById('connection-text').textContent = `🔄 連接中... (${this.connectionAttempts + 1}/${this.maxConnectionAttempts})`;
-                } else {
-                    document.getElementById('connection-text').textContent = '🔴 連接失敗';
-                    this.showError('❌ 無法連接到服務器，請檢查網絡或刷新頁面');
-                }
-            });
-
-            // 🎯 心跳響應
-            this.socket.on('heartbeat-response', (data) => {
-                console.log('💓 服務器心跳響應');
-            });
-
-            // 🎯 服務器心跳
-            this.socket.on('server-heartbeat', (data) => {
-                console.log(`💓 服務器心跳: ${data.activeCountdowns} 個倒計時, ${data.connectedUsers} 個用戶`);
-            });
-
-            // 倒計時數據事件
-            this.socket.on('countdown-list', (countdowns) => {
-                console.log(`📋 收到完整列表: ${countdowns.length} 個倒計時項目`);
-                this.countdowns = countdowns;
-                this.lastSyncTime = Date.now();
-                this.renderCountdowns();
-            });
-
-            this.socket.on('countdown-added', (countdown) => {
-                if (!this.countdowns.find(c => c.id === countdown.id)) {
-                    this.countdowns.push(countdown);
-                    this.sortCountdowns();
-                    this.renderCountdowns();
-                    console.log(`➕ 新增倒計時: (${countdown.x},${countdown.y}) by ${countdown.createdBy}`);
-                }
-            });
-
-            this.socket.on('countdown-removed', (data) => {
-                const beforeCount = this.countdowns.length;
-                this.countdowns = this.countdowns.filter(c => c.id !== data.id);
-                if (this.countdowns.length !== beforeCount) {
-                    this.renderCountdowns();
-                    console.log(`🗑️ 移除倒計時 ID: ${data.id}`);
-                }
-            });
-
-            this.socket.on('countdowns-cleared', () => {
-                this.countdowns = [];
-                this.renderCountdowns();
-                console.log('🧹 所有倒計時已清空');
-            });
-
-            // 錯誤處理
-            this.socket.on('error', (data) => {
-                this.showError(data.message);
-                if (data.duplicateId) {
-                    this.highlightDuplicateItem(data.duplicateId);
-                }
-                console.error('❌ 服務器錯誤:', data.message);
-            });
-
-            // 用戶事件
-            this.socket.on('user-joined', (user) => {
-                console.log(`👋 ${user.name} 加入了協作`);
-            });
-
-            this.socket.on('user-left', (userId) => {
-                console.log(`👋 用戶 ${userId} 離開了協作`);
-            });
-        }
-
-        // 🔄 請求同步
-        requestSync() {
-            if (this.isConnected) {
-                this.socket.emit('request-sync');
-                console.log('🔄 請求服務器同步最新數據');
-            } else {
-                console.log('⚠️ 未連接，無法同步');
-                this.showError('❌ 與服務器斷開連接，無法同步數據');
-            }
-        }
-
-        setupUIEvents() {
-            // 表單提交
-            const form = document.getElementById('countdown-form');
-            form.addEventListener('submit', (e) => {
-                e.preventDefault();
-                this.addCountdown();
-            });
-
-            // 清空所有按鈕
-            const clearBtn = document.getElementById('clear-all-btn');
-            clearBtn.addEventListener('click', () => {
-                if (confirm('⚠️ 確定要清空所有倒計時嗎？此操作無法復原。')) {
-                    if (this.isConnected) {
-                        this.socket.emit('clear-all');
-                    } else {
-                        this.showError('❌ 與服務器斷開連接，無法執行操作');
-                    }
-                }
-            });
-
-            // 手動同步按鈕
-            const syncBtn = document.getElementById('sync-btn');
-            syncBtn.addEventListener('click', () => {
-                this.requestSync();
-                this.showTemporaryMessage('🔄 正在同步最新數據...');
-            });
-
-            // 座標輸入實時檢查
-            const coordXInput = document.getElementById('coord-x');
-            const coordYInput = document.getElementById('coord-y');
-            
-            const checkCoordinates = () => {
-                const x = parseInt(coordXInput.value);
-                const y = parseInt(coordYInput.value);
-                
-                if (!isNaN(x) && !isNaN(y)) {
-                    const existing = this.countdowns.find(c => c.x === x && c.y === y);
-                    if (existing) {
-                        coordXInput.style.borderColor = '#f59e0b';
-                        coordYInput.style.borderColor = '#f59e0b';
-                        coordXInput.style.backgroundColor = '#fffbeb';
-                        coordYInput.style.backgroundColor = '#fffbeb';
-                    } else {
-                        coordXInput.style.borderColor = '';
-                        coordYInput.style.borderColor = '';
-                        coordXInput.style.backgroundColor = '';
-                        coordYInput.style.backgroundColor = '';
-                    }
-                }
+            script.onerror = () => {
+                console.error('❌ Socket.IO 加載失敗');
+                showError('無法加載必要組件，請刷新頁面');
             };
-            
-            coordXInput.addEventListener('input', checkCoordinates);
-            coordYInput.addEventListener('input', checkCoordinates);
+            document.head.appendChild(script);
+        } else {
+            console.log('✅ Socket.IO 已存在');
+            startApp();
+        }
 
-            // 輸入驗證和格式化
-            const inputs = form.querySelectorAll('input[type="number"]');
-            inputs.forEach(input => {
-                input.addEventListener('input', () => {
-                    this.hideError();
+        function startApp() {
+            console.log('🚀 啟動應用...');
+            
+            // 簡化的應用類
+            class SimpleCountdownApp {
+                constructor() {
+                    this.countdowns = [];
+                    this.currentUser = null;
+                    this.isConnected = false;
                     
-                    // 自動格式化時間輸入
-                    if (input.id === 'time-seconds' || input.id === 'time-minutes') {
-                        let value = parseInt(input.value);
-                        if (value > 59) {
-                            input.value = 59;
-                        } else if (value < 0) {
-                            input.value = 0;
+                    this.showUserModal();
+                }
+                
+                showUserModal() {
+                    const modal = document.getElementById('user-modal');
+                    const nameInput = document.getElementById('user-name-input');
+                    const confirmBtn = document.getElementById('confirm-name');
+                    const randomBtn = document.getElementById('random-name');
+                    
+                    // 隨機名字
+                    randomBtn.onclick = () => {
+                        const adjectives = ['勤奮的', '聰明的', '快速的', '準確的', '專注的', '創新的', '積極的', '高效的', '友善的', '樂觀的'];
+                        const nouns = ['戰士', '工程師', '設計師', '分析師', '專家', '管理者', '開發者', '策略家', '創作者', '探索者'];
+                        const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+                        const noun = nouns[Math.floor(Math.random() * nouns.length)];
+                        const number = Math.floor(Math.random() * 99) + 1;
+                        nameInput.value = `${adjective}${noun}${number}`;
+                    };
+                    
+                    // 確認按鈕
+                    confirmBtn.onclick = () => {
+                        const name = nameInput.value.trim();
+                        if (name.length >= 2) {
+                            this.setUser(name);
+                            modal.style.display = 'none';
+                            this.initSocket();
+                        } else {
+                            alert('名字至少需要2個字符');
                         }
-                    }
+                    };
                     
-                    // 座標範圍限制
-                    if (input.id === 'coord-x' || input.id === 'coord-y') {
-                        let value = parseInt(input.value);
-                        if (value > 9999) {
-                            input.value = 9999;
-                        } else if (value < 0) {
-                            input.value = 0;
-                        }
-                    }
-                });
-                
-                // Enter 鍵快速提交
-                input.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        form.dispatchEvent(new Event('submit'));
-                    }
-                });
-            });
-        }
-
-        addCountdown() {
-            if (!this.isConnected) {
-                this.showError('❌ 與服務器斷開連接，請等待重連或刷新頁面');
-                return;
-            }
-
-            const x = parseInt(document.getElementById('coord-x').value);
-            const y = parseInt(document.getElementById('coord-y').value);
-            const minutes = parseInt(document.getElementById('time-minutes').value) || 0;
-            const seconds = parseInt(document.getElementById('time-seconds').value) || 0;
-
-            // 前端驗證
-            if (isNaN(x) || isNaN(y) || x < 0 || y < 0) {
-                this.showError('❌ 請輸入有效的座標 (0-9999)');
-                return;
-            }
-
-            if (minutes < 0 || seconds < 0 || minutes > 59 || seconds > 59) {
-                this.showError('❌ 請輸入有效的時間 (0-59)');
-                return;
-            }
-
-            if (minutes === 0 && seconds === 0) {
-                this.showError('❌ 時間必須大於 0');
-                return;
-            }
-
-            // 檢查座標是否重複
-            const existingCoord = this.countdowns.find(countdown => 
-                countdown.x === x && countdown.y === y
-            );
-            
-            if (existingCoord) {
-                const remaining = Math.max(0, existingCoord.endTime - Date.now());
-                const timeStr = remaining > 0 ? this.formatTime(remaining) : '已結束';
-                this.showError(`❌ 座標 (${x}, ${y}) 已存在倒計時！\n創建者：${existingCoord.createdBy}\n剩餘時間：${timeStr}`);
-                
-                // 高亮顯示重複的項目
-                this.highlightDuplicateItem(existingCoord.id);
-                return;
-            }
-
-            // 發送到服務器
-            this.socket.emit('add-countdown', { 
-                x, y, minutes, seconds,
-                user: this.currentUser
-            });
-
-            // 清空表單
-            document.getElementById('countdown-form').reset();
-            this.hideError();
-            
-            console.log(`📤 發送倒計時: (${x},${y}) ${minutes}:${seconds.toString().padStart(2, '0')}`);
-        }
-
-        removeCountdown(id) {
-            if (!this.isConnected) {
-                this.showError('❌ 與服務器斷開連接');
-                return;
-            }
-            this.socket.emit('remove-countdown', { id });
-        }
-
-        // 高亮顯示重複的倒計時項目
-        highlightDuplicateItem(id) {
-            const itemElement = document.querySelector(`[data-countdown-id="${id}"]`);
-            if (itemElement) {
-                itemElement.classList.remove('highlight-duplicate');
-                itemElement.offsetHeight;
-                itemElement.classList.add('highlight-duplicate');
-                
-                itemElement.scrollIntoView({ 
-                    behavior: 'smooth', 
-                    block: 'center' 
-                });
-                
-                setTimeout(() => {
-                    if (itemElement) {
-                        itemElement.classList.remove('highlight-duplicate');
-                    }
-                }, 3000);
-            }
-        }
-
-        sortCountdowns() {
-            const now = Date.now();
-            this.countdowns.sort((a, b) => {
-                const aRemaining = Math.max(0, a.endTime - now);
-                const bRemaining = Math.max(0, b.endTime - now);
-                
-                if (aRemaining > 0 && bRemaining > 0) {
-                    return aRemaining - bRemaining;
+                    // Enter 鍵
+                    nameInput.onkeypress = (e) => {
+                        if (e.key === 'Enter') confirmBtn.click();
+                    };
+                    
+                    nameInput.focus();
                 }
                 
-                if (aRemaining === 0 && bRemaining === 0) {
-                    return b.endTime - a.endTime;
+                setUser(name) {
+                    const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#84cc16', '#f97316', '#ec4899', '#6366f1', '#14b8a6', '#fbbf24'];
+                    this.currentUser = {
+                        name: name,
+                        color: colors[Math.floor(Math.random() * colors.length)]
+                    };
+                    
+                    document.getElementById('current-user-name').textContent = name;
+                    document.getElementById('current-user-color').style.backgroundColor = this.currentUser.color;
+                    
+                    console.log(`👤 用戶設置: ${name}`);
                 }
                 
-                return bRemaining - aRemaining;
-            });
-        }
-
-        updateCountdownTimers() {
-            this.countdowns.forEach(countdown => {
-                const timerElement = document.querySelector(`[data-countdown-id="${countdown.id}"] .countdown-timer`);
-                if (timerElement) {
-                    const now = Date.now();
-                    const remaining = Math.max(0, countdown.endTime - now);
-                    const isExpired = remaining === 0;
-                    const isWarning = remaining > 0 && remaining <= 60000;
+                initSocket() {
+                    console.log('🔌 初始化 Socket 連接...');
                     
-                    const timerText = isExpired ? '已結束' : this.formatTime(remaining);
-                    timerElement.textContent = timerText;
+                    // 🎯 最簡單的 Socket.IO 配置
+                    this.socket = io({
+                        transports: ['polling', 'websocket'], // polling 優先，更穩定
+                        upgrade: true,
+                        timeout: 20000,
+                        forceNew: true // 強制新連接，避免緩存問題
+                    });
                     
-                    timerElement.className = 'countdown-timer' + 
-                        (isExpired ? ' expired' : (isWarning ? ' warning' : ''));
-                    
-                    const itemElement = timerElement.closest('.countdown-item');
-                    if (itemElement) {
-                        itemElement.className = 'countdown-item' + 
-                            (isExpired ? ' expired' : (isWarning ? ' warning' : ''));
-                    }
+                    this.setupEvents();
                 }
-            });
-        }
-
-        renderCountdowns() {
-            const container = document.getElementById('countdown-list');
-            
-            if (this.countdowns.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">⏳</div>
-                        <p>尚無倒計時項目<br>開始添加第一個吧！</p>
-                    </div>
-                `;
-                return;
-            }
-
-            this.sortCountdowns();
-            
-            const existingIds = Array.from(container.querySelectorAll('[data-countdown-id]'))
-                .map(el => parseInt(el.dataset.countdownId));
-            const currentIds = this.countdowns.map(c => c.id);
-            
-            const needsFullRender = existingIds.length !== currentIds.length || 
-                !existingIds.every(id => currentIds.includes(id)) ||
-                !currentIds.every(id => existingIds.includes(id));
-            
-            if (needsFullRender) {
-                container.innerHTML = this.countdowns.map(countdown => {
-                    const now = Date.now();
-                    const remaining = Math.max(0, countdown.endTime - now);
-                    const isExpired = remaining === 0;
-                    const isWarning = remaining > 0 && remaining <= 60000;
+                
+                setupEvents() {
+                    // 連接事件
+                    this.socket.on('connect', () => {
+                        this.isConnected = true;
+                        this.updateStatus('🟢 已連線');
+                        console.log('✅ Socket 連接成功');
+                        
+                        // 發送用戶信息
+                        this.socket.emit('set-user-info', this.currentUser);
+                    });
                     
-                    return this.createCountdownHTML(countdown, remaining, isExpired, isWarning);
-                }).join('');
-
-                container.querySelectorAll('.remove-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        const id = parseInt(btn.dataset.id);
-                        if (confirm('確定要移除這個倒計時嗎？')) {
-                            this.removeCountdown(id);
+                    this.socket.on('disconnect', () => {
+                        this.isConnected = false;
+                        this.updateStatus('🔴 連線中斷');
+                        console.log('❌ Socket 連接斷開');
+                    });
+                    
+                    this.socket.on('connect_error', (error) => {
+                        this.isConnected = false;
+                        this.updateStatus('🔴 連接錯誤');
+                        console.error('🔌 連接錯誤:', error);
+                        this.showError('連接服務器失敗，請檢查網絡或刷新頁面');
+                    });
+                    
+                    // 歡迎消息
+                    this.socket.on('welcome', (data) => {
+                        console.log('🎉 收到歡迎消息:', data.message);
+                        this.showMessage('🎉 連接成功！');
+                    });
+                    
+                    // 倒計時事件
+                    this.socket.on('countdown-list', (countdowns) => {
+                        console.log(`📋 收到倒計時列表: ${countdowns.length} 個`);
+                        this.countdowns = countdowns;
+                        this.render();
+                    });
+                    
+                    this.socket.on('countdown-added', (countdown) => {
+                        if (!this.countdowns.find(c => c.id === countdown.id)) {
+                            this.countdowns.push(countdown);
+                            this.render();
+                            console.log(`➕ 新增: (${countdown.x},${countdown.y})`);
                         }
                     });
-                });
+                    
+                    this.socket.on('countdown-removed', (data) => {
+                        this.countdowns = this.countdowns.filter(c => c.id !== data.id);
+                        this.render();
+                        console.log(`🗑️ 移除: ID ${data.id}`);
+                    });
+                    
+                    this.socket.on('countdowns-cleared', () => {
+                        this.countdowns = [];
+                        this.render();
+                        console.log('🧹 清空所有');
+                    });
+                    
+                    this.socket.on('error', (data) => {
+                        this.showError(data.message);
+                        if (data.duplicateId) {
+                            this.highlight(data.duplicateId);
+                        }
+                    });
+                    
+                    this.setupUI();
+                }
                 
-                console.log(`🎨 重新渲染了 ${this.countdowns.length} 個倒計時項目`);
+                setupUI() {
+                    // 表單提交
+                    document.getElementById('countdown-form').onsubmit = (e) => {
+                        e.preventDefault();
+                        this.addCountdown();
+                    };
+                    
+                    // 清空按鈕
+                    document.getElementById('clear-all-btn').onclick = () => {
+                        if (confirm('確定清空所有倒計時？')) {
+                            if (this.isConnected) {
+                                this.socket.emit('clear-all');
+                            } else {
+                                this.showError('未連接到服務器');
+                            }
+                        }
+                    };
+                    
+                    // 同步按鈕
+                    document.getElementById('sync-btn').onclick = () => {
+                        if (this.isConnected) {
+                            this.socket.emit('request-sync');
+                            this.showMessage('🔄 正在同步...');
+                        } else {
+                            this.showError('未連接到服務器');
+                        }
+                    };
+                    
+                    // 輸入驗證
+                    const inputs = document.querySelectorAll('input[type="number"]');
+                    inputs.forEach(input => {
+                        input.oninput = () => {
+                            this.hideError();
+                            
+                            // 時間格式化
+                            if (input.id === 'time-seconds' || input.id === 'time-minutes') {
+                                let value = parseInt(input.value);
+                                if (value > 59) input.value = 59;
+                                else if (value < 0) input.value = 0;
+                            }
+                            
+                            // 座標限制
+                            if (input.id === 'coord-x' || input.id === 'coord-y') {
+                                let value = parseInt(input.value);
+                                if (value > 9999) input.value = 9999;
+                                else if (value < 0) input.value = 0;
+                            }
+                        };
+                        
+                        // Enter 鍵提交
+                        input.onkeypress = (e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                document.getElementById('countdown-form').dispatchEvent(new Event('submit'));
+                            }
+                        };
+                    });
+                    
+                    // 座標重複檢查
+                    const coordX = document.getElementById('coord-x');
+                    const coordY = document.getElementById('coord-y');
+                    
+                    const checkCoords = () => {
+                        const x = parseInt(coordX.value);
+                        const y = parseInt(coordY.value);
+                        
+                        if (!isNaN(x) && !isNaN(y)) {
+                            const existing = this.countdowns.find(c => c.x === x && c.y === y);
+                            if (existing) {
+                                coordX.style.borderColor = '#f59e0b';
+                                coordY.style.borderColor = '#f59e0b';
+                                coordX.style.backgroundColor = '#fffbeb';
+                                coordY.style.backgroundColor = '#fffbeb';
+                            } else {
+                                coordX.style.borderColor = '';
+                                coordY.style.borderColor = '';
+                                coordX.style.backgroundColor = '';
+                                coordY.style.backgroundColor = '';
+                            }
+                        }
+                    };
+                    
+                    coordX.oninput = checkCoords;
+                    coordY.oninput = checkCoords;
+                    
+                    // 開始更新倒計時
+                    setInterval(() => {
+                        this.updateTimers();
+                    }, 1000);
+                }
+                
+                addCountdown() {
+                    if (!this.isConnected) {
+                        this.showError('未連接到服務器');
+                        return;
+                    }
+                    
+                    const x = parseInt(document.getElementById('coord-x').value);
+                    const y = parseInt(document.getElementById('coord-y').value);
+                    const minutes = parseInt(document.getElementById('time-minutes').value) || 0;
+                    const seconds = parseInt(document.getElementById('time-seconds').value) || 0;
+                    
+                    // 簡單驗證
+                    if (isNaN(x) || isNaN(y) || x < 0 || y < 0) {
+                        this.showError('請輸入有效座標 (0-9999)');
+                        return;
+                    }
+                    
+                    if (minutes < 0 || seconds < 0 || minutes > 59 || seconds > 59) {
+                        this.showError('請輸入有效時間 (0-59)');
+                        return;
+                    }
+                    
+                    if (minutes === 0 && seconds === 0) {
+                        this.showError('時間不能為0');
+                        return;
+                    }
+                    
+                    // 檢查重複座標
+                    const existing = this.countdowns.find(c => c.x === x && c.y === y);
+                    if (existing) {
+                        const remaining = Math.max(0, existing.endTime - Date.now());
+                        const timeStr = remaining > 0 ? this.formatTime(remaining) : '已結束';
+                        this.showError(`座標 (${x}, ${y}) 已存在倒計時！\n創建者：${existing.createdBy}\n剩餘時間：${timeStr}`);
+                        this.highlight(existing.id);
+                        return;
+                    }
+                    
+                    // 發送到服務器
+                    this.socket.emit('add-countdown', {
+                        x, y, minutes, seconds,
+                        user: this.currentUser
+                    });
+                    
+                    // 清空表單
+                    document.getElementById('countdown-form').reset();
+                    this.hideError();
+                    console.log(`📤 添加倒計時: (${x},${y}) ${minutes}:${seconds}`);
+                }
+                
+                render() {
+                    const container = document.getElementById('countdown-list');
+                    
+                    if (this.countdowns.length === 0) {
+                        container.innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">⏳</div>
+                                <p>尚無倒計時<br>開始添加吧！</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    // 排序：活躍的在前
+                    const now = Date.now();
+                    this.countdowns.sort((a, b) => {
+                        const aRemaining = Math.max(0, a.endTime - now);
+                        const bRemaining = Math.max(0, b.endTime - now);
+                        
+                        // 未過期的排在前面，按剩餘時間升序
+                        if (aRemaining > 0 && bRemaining > 0) {
+                            return aRemaining - bRemaining;
+                        }
+                        
+                        // 過期的排在後面，按過期時間降序
+                        if (aRemaining === 0 && bRemaining === 0) {
+                            return b.endTime - a.endTime;
+                        }
+                        
+                        // 未過期的在前
+                        return bRemaining - aRemaining;
+                    });
+                    
+                    container.innerHTML = this.countdowns.map(item => {
+                        const remaining = Math.max(0, item.endTime - now);
+                        const isExpired = remaining === 0;
+                        const isWarning = remaining > 0 && remaining <= 60000;
+                        const timeStr = isExpired ? '已結束' : this.formatTime(remaining);
+                        const endTimeStr = new Date(item.endTime).toLocaleString('zh-TW', {
+                            timeZone: 'Asia/Taipei',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: false
+                        });
+                        
+                        const itemClass = isExpired ? 'expired' : (isWarning ? 'warning' : '');
+                        const timerClass = isExpired ? 'expired' : (isWarning ? 'warning' : '');
+                        
+                        return `
+                            <div class="countdown-item ${itemClass} fade-in" data-id="${item.id}">
+                                <div class="countdown-header">
+                                    <div class="countdown-coordinates">📍 (${item.x}, ${item.y})</div>
+                                    <button class="remove-btn" onclick="app.removeCountdown(${item.id})" title="移除倒計時">×</button>
+                                </div>
+                                <div class="countdown-timer ${timerClass}">${timeStr}</div>
+                                <div class="countdown-info">
+                                    <div class="countdown-author">
+                                        <span class="author-badge" style="background-color: ${item.createdByColor}"></span>
+                                        ${item.createdBy}
+                                    </div>
+                                    <div class="countdown-endtime">🕐 ${endTimeStr}</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+                
+                removeCountdown(id) {
+                    if (!this.isConnected) {
+                        this.showError('未連接到服務器');
+                        return;
+                    }
+                    
+                    if (confirm('確定移除此倒計時？')) {
+                        this.socket.emit('remove-countdown', { id });
+                    }
+                }
+                
+                updateTimers() {
+                    if (this.countdowns.length === 0) return;
+                    
+                    const now = Date.now();
+                    
+                    this.countdowns.forEach(item => {
+                        const element = document.querySelector(`[data-id="${item.id}"] .countdown-timer`);
+                        if (element) {
+                            const remaining = Math.max(0, item.endTime - now);
+                            const isExpired = remaining === 0;
+                            const isWarning = remaining > 0 && remaining <= 60000;
+                            const timeStr = isExpired ? '已結束' : this.formatTime(remaining);
+                            
+                            element.textContent = timeStr;
+                            element.className = `countdown-timer ${isExpired ? 'expired' : (isWarning ? 'warning' : '')}`;
+                            
+                            const itemElement = element.closest('.countdown-item');
+                            if (itemElement) {
+                                itemElement.className = `countdown-item ${isExpired ? 'expired' : (isWarning ? 'warning' : '')} fade-in`;
+                            }
+                        }
+                    });
+                }
+                
+                formatTime(ms) {
+                    const totalSeconds = Math.floor(ms / 1000);
+                    const minutes = Math.floor(totalSeconds / 60);
+                    const seconds = totalSeconds % 60;
+                    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+                
+                highlight(id) {
+                    const element = document.querySelector(`[data-id="${id}"]`);
+                    if (element) {
+                        element.classList.remove('highlight-duplicate');
+                        element.offsetHeight; // 強制重排
+                        element.classList.add('highlight-duplicate');
+                        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        setTimeout(() => {
+                            element.classList.remove('highlight-duplicate');
+                        }, 3000);
+                    }
+                }
+                
+                updateStatus(text) {
+                    document.getElementById('connection-text').textContent = text;
+                    const indicator = document.getElementById('connection-indicator');
+                    if (text.includes('已連線')) {
+                        indicator.classList.remove('disconnected');
+                    } else {
+                        indicator.classList.add('disconnected');
+                    }
+                }
+                
+                showMessage(msg) {
+                    const errorDiv = document.getElementById('error-message');
+                    errorDiv.innerHTML = msg;
+                    errorDiv.classList.add('show');
+                    setTimeout(() => this.hideError(), 2000);
+                }
+                
+                showError(msg) {
+                    const errorDiv = document.getElementById('error-message');
+                    const formattedMessage = msg.replace(/\n/g, '<br>');
+                    errorDiv.innerHTML = `❌ ${formattedMessage}`;
+                    errorDiv.classList.add('show');
+                    setTimeout(() => this.hideError(), 7000);
+                }
+                
+                hideError() {
+                    const errorDiv = document.getElementById('error-message');
+                    errorDiv.classList.remove('show');
+                }
             }
+            
+            // 啟動應用
+            window.app = new SimpleCountdownApp();
+            console.log('✅ 應用啟動完成');
         }
 
-        createCountdownHTML(countdown, remaining, isExpired, isWarning) {
-            const endTimeStr = this.formatDateTime(new Date(countdown.endTime));
-            const timerText = isExpired ? '已結束' : this.formatTime(remaining);
-            const itemClass = isExpired ? 'expired' : (isWarning ? 'warning' : '');
-            const timerClass = isExpired ? 'expired' : (isWarning ? 'warning' : '');
-
-            return `
-                <div class="countdown-item ${itemClass} fade-in" data-countdown-id="${countdown.id}">
-                    <div class="countdown-header">
-                        <div class="countdown-coordinates">📍 (${countdown.x}, ${countdown.y})</div>
-                        <button class="remove-btn" data-id="${countdown.id}" title="移除倒計時">×</button>
-                    </div>
-                    <div class="countdown-timer ${timerClass}">${timerText}</div>
-                    <div class="countdown-info">
-                        <div class="countdown-author">
-                            <span class="author-badge" style="background-color: ${countdown.createdByColor}"></span>
-                            ${countdown.createdBy}
-                        </div>
-                        <div class="countdown-endtime">🕐 ${endTimeStr}</div>
-                    </div>
+        function showError(message) {
+            document.getElementById('countdown-list').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">❌</div>
+                    <p>${message}</p>
                 </div>
             `;
         }
-
-        formatTime(milliseconds) {
-            const totalSeconds = Math.floor(milliseconds / 1000);
-            const minutes = Math.floor(totalSeconds / 60);
-            const seconds = totalSeconds % 60;
-            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        }
-
-        formatDateTime(date) {
-            return date.toLocaleString('zh-TW', {
-                timeZone: 'Asia/Taipei',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            });
-        }
-
-        startUpdating() {
-            this.updateInterval = setInterval(() => {
-                if (this.countdowns.length > 0) {
-                    this.updateCountdownTimers();
-                }
-            }, 1000);
-        }
-
-        updateConnectionStatus(connected) {
-            const indicator = document.getElementById('connection-indicator');
-            const text = document.getElementById('connection-text');
-            
-            if (connected) {
-                indicator.classList.remove('disconnected');
-                text.textContent = '🟢 已連線';
-            } else {
-                indicator.classList.add('disconnected');
-                text.textContent = '🔴 連線中斷';
-            }
-        }
-
-        showTemporaryMessage(message) {
-            const errorDiv = document.getElementById('error-message');
-            errorDiv.innerHTML = message;
-            errorDiv.classList.add('show');
-            
-            setTimeout(() => {
-                this.hideError();
-            }, 2000);
-        }
-
-        showError(message) {
-            const errorDiv = document.getElementById('error-message');
-            const formattedMessage = message.replace(/\n/g, '<br>');
-            errorDiv.innerHTML = formattedMessage;
-            errorDiv.classList.add('show');
-            
-            setTimeout(() => {
-                this.hideError();
-            }, 7000);
-        }
-
-        hideError() {
-            const errorDiv = document.getElementById('error-message');
-            errorDiv.classList.remove('show');
-        }
-    }
-
-    // 初始化應用
-    console.log('🎯 正在初始化多人協作倒計時工具...');
-    window.countdownManager = new CountdownManager();
-}
     </script>
 </body>
 </html>
