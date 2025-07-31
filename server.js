@@ -33,9 +33,9 @@ async function loadData() {
     const data = await fs.readFile(DATA_FILE, 'utf8');
     const parsed = JSON.parse(data);
     
-    // 清理過期的倒計時（比結束時間晚30秒才清理，給緩衝時間）
+    // 只加載未過期的倒計時
     const now = Date.now();
-    countdownItems = parsed.countdowns.filter(item => item.endTime > (now - 30000));
+    countdownItems = parsed.countdowns.filter(item => item.endTime > now);
     nextId = parsed.nextId || 1;
     
     // 確保 nextId 是正確的
@@ -43,11 +43,12 @@ async function loadData() {
       nextId = Math.max(...countdownItems.map(item => item.id)) + 1;
     }
     
-    console.log(`📊 加載了 ${countdownItems.length} 個共享倒計時`);
+    console.log(`📊 從文件加載了 ${countdownItems.length} 個活躍倒計時`);
     
     // 如果清理了過期項目，保存一次
     if (parsed.countdowns.length !== countdownItems.length) {
       await saveData();
+      console.log(`🧹 清理了 ${parsed.countdowns.length - countdownItems.length} 個過期項目`);
     }
   } catch (error) {
     console.log('📝 創建新的數據文件');
@@ -96,15 +97,16 @@ io.on('connection', (socket) => {
     joinTime: Date.now()
   };
   
-  // 🎯 發送當前所有共享倒計時給新用戶
-  socket.emit('countdown-list', countdownItems);
-  console.log(`📤 向用戶 ${socket.id} 發送了 ${countdownItems.length} 個倒計時`);
-  
   // 處理用戶設置信息
   socket.on('set-user-info', (userInfo) => {
     socket.user.name = userInfo.name;
     socket.user.color = userInfo.color;
-    console.log(`✅ 用戶 ${socket.user.name} 已加入協作`);
+    console.log(`✅ 用戶 "${socket.user.name}" 已加入協作`);
+    
+    // 🎯 立即發送當前所有倒計時給新用戶
+    const activeCountdowns = countdownItems.filter(item => item.endTime > Date.now());
+    socket.emit('countdown-list', activeCountdowns);
+    console.log(`📤 向新用戶 "${socket.user.name}" 發送了 ${activeCountdowns.length} 個活躍倒計時`);
     
     // 通知其他用戶有新用戶加入
     socket.broadcast.emit('user-joined', {
@@ -112,6 +114,13 @@ io.on('connection', (socket) => {
       color: socket.user.color,
       id: socket.id
     });
+  });
+  
+  // 🔄 用戶請求最新數據
+  socket.on('request-sync', () => {
+    const activeCountdowns = countdownItems.filter(item => item.endTime > Date.now());
+    socket.emit('countdown-list', activeCountdowns);
+    console.log(`🔄 向用戶 "${socket.user.name}" 同步了 ${activeCountdowns.length} 個倒計時`);
   });
   
   // 處理添加新倒計時（全局共享）
@@ -133,8 +142,9 @@ io.on('connection', (socket) => {
       return;
     }
     
-    // 檢查座標是否重複
-    const existingItem = countdownItems.find(item => item.x === x && item.y === y);
+    // 檢查座標是否重複（只檢查活躍的倒計時）
+    const activeCountdowns = countdownItems.filter(item => item.endTime > Date.now());
+    const existingItem = activeCountdowns.find(item => item.x === x && item.y === y);
     if (existingItem) {
       const remaining = Math.max(0, existingItem.endTime - Date.now());
       const timeStr = remaining > 0 ? 
@@ -172,6 +182,7 @@ io.on('connection', (socket) => {
     io.emit('countdown-added', newItem);
     
     console.log(`➕ ${socket.user.name} 創建了共享倒計時: (${x},${y}) ${minutes}:${seconds.toString().padStart(2, '0')}`);
+    console.log(`📊 當前共有 ${countdownItems.length} 個倒計時`);
   });
   
   // 處理移除倒計時（全局共享）
@@ -188,6 +199,7 @@ io.on('connection', (socket) => {
       // 🌍 通知所有用戶移除
       io.emit('countdown-removed', { id });
       console.log(`🗑️ ${socket.user.name} 移除了倒計時 (${removedItem.x},${removedItem.y})`);
+      console.log(`📊 當前共有 ${countdownItems.length} 個倒計時`);
     }
   });
   
@@ -206,7 +218,7 @@ io.on('connection', (socket) => {
   
   // 用戶斷線
   socket.on('disconnect', () => {
-    console.log(`👋 用戶 ${socket.user.name} 離開協作`);
+    console.log(`👋 用戶 ${socket.user.name} 離開協作 (當前倒計時: ${countdownItems.length})`);
     socket.broadcast.emit('user-left', socket.user.id);
   });
 });
@@ -216,8 +228,8 @@ setInterval(async () => {
   const now = Date.now();
   const initialCount = countdownItems.length;
   
-  // 保留已結束但未超過1分鐘的項目，給用戶查看時間
-  countdownItems = countdownItems.filter(item => item.endTime > (now - 60000));
+  // 清理過期超過30秒的項目
+  countdownItems = countdownItems.filter(item => item.endTime > (now - 30000));
   
   if (countdownItems.length !== initialCount) {
     // 💾 保存變更
@@ -226,15 +238,30 @@ setInterval(async () => {
     // 🌍 通知所有用戶更新列表
     io.emit('countdown-list', countdownItems);
     console.log(`🧹 自動清理了 ${initialCount - countdownItems.length} 個過期倒計時`);
+    console.log(`📊 剩餘 ${countdownItems.length} 個活躍倒計時`);
   }
 }, 60000); // 每分鐘檢查一次
 
+// 每5秒向所有用戶同步最新狀態（確保同步）
+setInterval(() => {
+  if (io.engine.clientsCount > 0) {
+    const activeCountdowns = countdownItems.filter(item => item.endTime > Date.now());
+    io.emit('sync-update', {
+      countdowns: activeCountdowns,
+      serverTime: Date.now(),
+      totalUsers: io.engine.clientsCount
+    });
+  }
+}, 5000);
+
 // 健康檢查端點
 app.get('/health', (req, res) => {
+  const activeCountdowns = countdownItems.filter(item => item.endTime > Date.now());
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    activeCountdowns: countdownItems.length,
+    totalCountdowns: countdownItems.length,
+    activeCountdowns: activeCountdowns.length,
     uptime: process.uptime(),
     timezone: 'Asia/Taipei',
     connectedUsers: io.engine.clientsCount
@@ -243,16 +270,21 @@ app.get('/health', (req, res) => {
 
 // 共享數據狀態端點
 app.get('/shared-status', (req, res) => {
+  const now = Date.now();
   res.json({
     totalCountdowns: countdownItems.length,
+    activeCountdowns: countdownItems.filter(item => item.endTime > now).length,
+    expiredCountdowns: countdownItems.filter(item => item.endTime <= now).length,
     nextId: nextId,
     connectedUsers: io.engine.clientsCount,
+    serverTime: now,
     countdowns: countdownItems.map(item => ({
       id: item.id,
       coordinates: `(${item.x}, ${item.y})`,
       createdBy: item.createdBy,
-      remaining: Math.max(0, item.endTime - Date.now()),
-      status: item.endTime > Date.now() ? 'active' : 'expired'
+      remaining: Math.max(0, item.endTime - now),
+      status: item.endTime > now ? 'active' : 'expired',
+      endTime: new Date(item.endTime).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })
     }))
   });
 });
@@ -295,4 +327,5 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🌍 環境: ${process.env.NODE_ENV || 'development'}`);
   console.log(`👥 支持全局共享倒計時協作`);
   console.log(`💾 數據持久化已啟用`);
+  console.log(`🔄 自動同步已啟用`);
 });
