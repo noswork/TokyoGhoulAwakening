@@ -6,11 +6,25 @@ const fs = require('fs').promises;
 
 const app = express();
 const server = http.createServer(app);
+
+// 🔧 優化 Socket.IO 配置 - 增強連接穩定性
 const io = socketIo(server, {
   cors: {
     origin: "*",
-    methods: ["GET", "POST"]
-  }
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  // 🎯 關鍵配置：增強連接穩定性
+  transports: ['websocket', 'polling'], // 支持多種傳輸方式
+  upgradeTimeout: 30000,                // 增加升級超時時間
+  pingTimeout: 60000,                   // 增加 ping 超時時間
+  pingInterval: 25000,                  // ping 間隔時間
+  allowEIO3: true,                      // 兼容舊版本
+  // Railway 特殊配置
+  connectTimeout: 45000,                // 連接超時
+  forceNew: false,                      // 不強制新連接
+  rememberUpgrade: true,                // 記住升級
+  timeout: 20000                        // 響應超時
 });
 
 // 設置 Handlebars 作為模板引擎
@@ -20,12 +34,20 @@ app.set('views', path.join(__dirname, 'src/pages'));
 // 服務靜態文件
 app.use(express.static('public'));
 
+// 🎯 增加中間件 - 保持服務器活躍
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+});
+
 // 數據文件路徑
 const DATA_FILE = path.join(__dirname, 'data.json');
 
-// 全局倒計時數據存儲（所有用戶共享）
+// 全局倒計時數據存儲
 let countdownItems = [];
 let nextId = 1;
+let serverStartTime = Date.now();
 
 // 從文件加載數據
 async function loadData() {
@@ -33,19 +55,16 @@ async function loadData() {
     const data = await fs.readFile(DATA_FILE, 'utf8');
     const parsed = JSON.parse(data);
     
-    // 只加載未過期的倒計時
     const now = Date.now();
     countdownItems = parsed.countdowns.filter(item => item.endTime > now);
     nextId = parsed.nextId || 1;
     
-    // 確保 nextId 是正確的
     if (countdownItems.length > 0) {
       nextId = Math.max(...countdownItems.map(item => item.id)) + 1;
     }
     
     console.log(`📊 從文件加載了 ${countdownItems.length} 個活躍倒計時`);
     
-    // 如果清理了過期項目，保存一次
     if (parsed.countdowns.length !== countdownItems.length) {
       await saveData();
       console.log(`🧹 清理了 ${parsed.countdowns.length - countdownItems.length} 個過期項目`);
@@ -77,6 +96,16 @@ async function saveData() {
 // 啟動時加載數據
 loadData();
 
+// 🎯 保持服務器活躍的 ping 端點
+app.get('/ping', (req, res) => {
+  res.json({ 
+    status: 'pong', 
+    timestamp: Date.now(),
+    uptime: Date.now() - serverStartTime,
+    countdowns: countdownItems.length
+  });
+});
+
 // 根路由
 app.get('/', (req, res) => {
   res.render('index', { 
@@ -84,9 +113,9 @@ app.get('/', (req, res) => {
   });
 });
 
-// Socket.IO 連接處理
+// 🔧 Socket.IO 連接處理 - 增強錯誤處理
 io.on('connection', (socket) => {
-  console.log(`👤 新用戶連接: ${socket.id}`);
+  console.log(`👤 新用戶連接: ${socket.id} (來源: ${socket.handshake.address})`);
   
   // 初始化用戶信息
   socket.user = {
@@ -94,131 +123,175 @@ io.on('connection', (socket) => {
     name: '未命名用戶',
     color: '#3b82f6',
     connected: true,
-    joinTime: Date.now()
+    joinTime: Date.now(),
+    lastActivity: Date.now()
   };
+  
+  // 🎯 立即發送連接確認
+  socket.emit('connection-confirmed', {
+    socketId: socket.id,
+    serverTime: Date.now(),
+    message: '連接成功'
+  });
   
   // 處理用戶設置信息
   socket.on('set-user-info', (userInfo) => {
-    socket.user.name = userInfo.name;
-    socket.user.color = userInfo.color;
-    console.log(`✅ 用戶 "${socket.user.name}" 已加入協作`);
-    
-    // 🎯 立即發送當前所有倒計時給新用戶
-    const activeCountdowns = countdownItems.filter(item => item.endTime > Date.now());
-    socket.emit('countdown-list', activeCountdowns);
-    console.log(`📤 向新用戶 "${socket.user.name}" 發送了 ${activeCountdowns.length} 個活躍倒計時`);
-    
-    // 通知其他用戶有新用戶加入
-    socket.broadcast.emit('user-joined', {
-      name: socket.user.name,
-      color: socket.user.color,
-      id: socket.id
-    });
+    try {
+      socket.user.name = userInfo.name;
+      socket.user.color = userInfo.color;
+      socket.user.lastActivity = Date.now();
+      
+      console.log(`✅ 用戶 "${socket.user.name}" 已加入協作`);
+      
+      // 立即發送當前所有倒計時
+      const activeCountdowns = countdownItems.filter(item => item.endTime > Date.now());
+      socket.emit('countdown-list', activeCountdowns);
+      console.log(`📤 向新用戶 "${socket.user.name}" 發送了 ${activeCountdowns.length} 個活躍倒計時`);
+      
+      // 通知其他用戶
+      socket.broadcast.emit('user-joined', {
+        name: socket.user.name,
+        color: socket.user.color,
+        id: socket.id
+      });
+    } catch (error) {
+      console.error('設置用戶信息錯誤:', error);
+      socket.emit('error', { message: '設置用戶信息失敗' });
+    }
   });
   
   // 🔄 用戶請求最新數據
   socket.on('request-sync', () => {
-    const activeCountdowns = countdownItems.filter(item => item.endTime > Date.now());
-    socket.emit('countdown-list', activeCountdowns);
-    console.log(`🔄 向用戶 "${socket.user.name}" 同步了 ${activeCountdowns.length} 個倒計時`);
+    try {
+      const activeCountdowns = countdownItems.filter(item => item.endTime > Date.now());
+      socket.emit('countdown-list', activeCountdowns);
+      socket.user.lastActivity = Date.now();
+      console.log(`🔄 向用戶 "${socket.user.name}" 同步了 ${activeCountdowns.length} 個倒計時`);
+    } catch (error) {
+      console.error('同步數據錯誤:', error);
+      socket.emit('error', { message: '同步數據失敗' });
+    }
   });
   
-  // 處理添加新倒計時（全局共享）
+  // 🎯 心跳檢測
+  socket.on('heartbeat', () => {
+    socket.user.lastActivity = Date.now();
+    socket.emit('heartbeat-response', { serverTime: Date.now() });
+  });
+  
+  // 處理添加新倒計時
   socket.on('add-countdown', async (data) => {
-    const { x, y, minutes, seconds, user } = data;
-    
-    // 數據驗證
-    if (typeof x !== 'number' || typeof y !== 'number' || 
-        typeof minutes !== 'number' || typeof seconds !== 'number' ||
-        x < 0 || y < 0 || minutes < 0 || seconds < 0 || 
-        minutes > 59 || seconds > 59) {
-      socket.emit('error', { message: '輸入數據無效' });
-      return;
-    }
-    
-    const totalSeconds = minutes * 60 + seconds;
-    if (totalSeconds <= 0) {
-      socket.emit('error', { message: '時間必須大於0' });
-      return;
-    }
-    
-    // 檢查座標是否重複（只檢查活躍的倒計時）
-    const activeCountdowns = countdownItems.filter(item => item.endTime > Date.now());
-    const existingItem = activeCountdowns.find(item => item.x === x && item.y === y);
-    if (existingItem) {
-      const remaining = Math.max(0, existingItem.endTime - Date.now());
-      const timeStr = remaining > 0 ? 
-        `${Math.floor(remaining / 60000)}:${Math.floor((remaining % 60000) / 1000).toString().padStart(2, '0')}` : 
-        '已結束';
+    try {
+      const { x, y, minutes, seconds, user } = data;
       
-      socket.emit('error', { 
-        message: `座標 (${x}, ${y}) 已存在倒計時！\n創建者：${existingItem.createdBy}\n剩餘時間：${timeStr}`,
-        duplicateId: existingItem.id
-      });
-      return;
-    }
-    
-    const now = new Date();
-    const endTime = new Date(now.getTime() + totalSeconds * 1000);
-    
-    const newItem = {
-      id: nextId++,
-      x: x,
-      y: y,
-      originalDuration: totalSeconds,
-      endTime: endTime.getTime(),
-      createdBy: user ? user.name : socket.user.name,
-      createdByColor: user ? user.color : socket.user.color,
-      createdAt: now.getTime()
-    };
-    
-    // 添加到全局共享列表
-    countdownItems.push(newItem);
-    
-    // 💾 保存到文件
-    await saveData();
-    
-    // 🌍 廣播給所有連接的用戶（包括創建者）
-    io.emit('countdown-added', newItem);
-    
-    console.log(`➕ ${socket.user.name} 創建了共享倒計時: (${x},${y}) ${minutes}:${seconds.toString().padStart(2, '0')}`);
-    console.log(`📊 當前共有 ${countdownItems.length} 個倒計時`);
-  });
-  
-  // 處理移除倒計時（全局共享）
-  socket.on('remove-countdown', async (data) => {
-    const { id } = data;
-    const itemIndex = countdownItems.findIndex(item => item.id === id);
-    
-    if (itemIndex !== -1) {
-      const removedItem = countdownItems.splice(itemIndex, 1)[0];
+      // 更新活動時間
+      socket.user.lastActivity = Date.now();
       
-      // 💾 保存到文件
+      // 數據驗證
+      if (typeof x !== 'number' || typeof y !== 'number' || 
+          typeof minutes !== 'number' || typeof seconds !== 'number' ||
+          x < 0 || y < 0 || minutes < 0 || seconds < 0 || 
+          minutes > 59 || seconds > 59) {
+        socket.emit('error', { message: '輸入數據無效' });
+        return;
+      }
+      
+      const totalSeconds = minutes * 60 + seconds;
+      if (totalSeconds <= 0) {
+        socket.emit('error', { message: '時間必須大於0' });
+        return;
+      }
+      
+      // 檢查座標是否重複
+      const activeCountdowns = countdownItems.filter(item => item.endTime > Date.now());
+      const existingItem = activeCountdowns.find(item => item.x === x && item.y === y);
+      if (existingItem) {
+        const remaining = Math.max(0, existingItem.endTime - Date.now());
+        const timeStr = remaining > 0 ? 
+          `${Math.floor(remaining / 60000)}:${Math.floor((remaining % 60000) / 1000).toString().padStart(2, '0')}` : 
+          '已結束';
+        
+        socket.emit('error', { 
+          message: `座標 (${x}, ${y}) 已存在倒計時！\n創建者：${existingItem.createdBy}\n剩餘時間：${timeStr}`,
+          duplicateId: existingItem.id
+        });
+        return;
+      }
+      
+      const now = new Date();
+      const endTime = new Date(now.getTime() + totalSeconds * 1000);
+      
+      const newItem = {
+        id: nextId++,
+        x: x,
+        y: y,
+        originalDuration: totalSeconds,
+        endTime: endTime.getTime(),
+        createdBy: user ? user.name : socket.user.name,
+        createdByColor: user ? user.color : socket.user.color,
+        createdAt: now.getTime()
+      };
+      
+      countdownItems.push(newItem);
       await saveData();
       
-      // 🌍 通知所有用戶移除
-      io.emit('countdown-removed', { id });
-      console.log(`🗑️ ${socket.user.name} 移除了倒計時 (${removedItem.x},${removedItem.y})`);
-      console.log(`📊 當前共有 ${countdownItems.length} 個倒計時`);
+      // 廣播給所有用戶
+      io.emit('countdown-added', newItem);
+      
+      console.log(`➕ ${socket.user.name} 創建了共享倒計時: (${x},${y}) ${minutes}:${seconds.toString().padStart(2, '0')}`);
+    } catch (error) {
+      console.error('添加倒計時錯誤:', error);
+      socket.emit('error', { message: '添加倒計時失敗' });
     }
   });
   
-  // 處理清空所有倒計時（全局操作）
+  // 處理移除倒計時
+  socket.on('remove-countdown', async (data) => {
+    try {
+      const { id } = data;
+      const itemIndex = countdownItems.findIndex(item => item.id === id);
+      
+      if (itemIndex !== -1) {
+        const removedItem = countdownItems.splice(itemIndex, 1)[0];
+        await saveData();
+        
+        io.emit('countdown-removed', { id });
+        console.log(`🗑️ ${socket.user.name} 移除了倒計時 (${removedItem.x},${removedItem.y})`);
+      }
+      
+      socket.user.lastActivity = Date.now();
+    } catch (error) {
+      console.error('移除倒計時錯誤:', error);
+      socket.emit('error', { message: '移除倒計時失敗' });
+    }
+  });
+  
+  // 處理清空所有倒計時
   socket.on('clear-all', async () => {
-    const clearedCount = countdownItems.length;
-    countdownItems = [];
-    
-    // 💾 保存到文件
-    await saveData();
-    
-    // 🌍 通知所有用戶清空
-    io.emit('countdowns-cleared');
-    console.log(`🧹 ${socket.user.name} 清空了所有 ${clearedCount} 個倒計時`);
+    try {
+      const clearedCount = countdownItems.length;
+      countdownItems = [];
+      
+      await saveData();
+      
+      io.emit('countdowns-cleared');
+      console.log(`🧹 ${socket.user.name} 清空了所有 ${clearedCount} 個倒計時`);
+      
+      socket.user.lastActivity = Date.now();
+    } catch (error) {
+      console.error('清空倒計時錯誤:', error);
+      socket.emit('error', { message: '清空倒計時失敗' });
+    }
+  });
+  
+  // 🔧 連接錯誤處理
+  socket.on('error', (error) => {
+    console.error(`Socket 錯誤 (${socket.id}):`, error);
   });
   
   // 用戶斷線
-  socket.on('disconnect', () => {
-    console.log(`👋 用戶 ${socket.user.name} 離開協作 (當前倒計時: ${countdownItems.length})`);
+  socket.on('disconnect', (reason) => {
+    console.log(`👋 用戶 ${socket.user.name} 離開協作 (原因: ${reason})`);
     socket.broadcast.emit('user-left', socket.user.id);
   });
 });
@@ -228,31 +301,26 @@ setInterval(async () => {
   const now = Date.now();
   const initialCount = countdownItems.length;
   
-  // 清理過期超過30秒的項目
   countdownItems = countdownItems.filter(item => item.endTime > (now - 30000));
   
   if (countdownItems.length !== initialCount) {
-    // 💾 保存變更
     await saveData();
-    
-    // 🌍 通知所有用戶更新列表
     io.emit('countdown-list', countdownItems);
     console.log(`🧹 自動清理了 ${initialCount - countdownItems.length} 個過期倒計時`);
-    console.log(`📊 剩餘 ${countdownItems.length} 個活躍倒計時`);
   }
-}, 60000); // 每分鐘檢查一次
+}, 60000);
 
-// 每5秒向所有用戶同步最新狀態（確保同步）
+// 🎯 定期向所有用戶發送心跳和同步
 setInterval(() => {
   if (io.engine.clientsCount > 0) {
     const activeCountdowns = countdownItems.filter(item => item.endTime > Date.now());
-    io.emit('sync-update', {
-      countdowns: activeCountdowns,
+    io.emit('server-heartbeat', {
       serverTime: Date.now(),
-      totalUsers: io.engine.clientsCount
+      activeCountdowns: activeCountdowns.length,
+      connectedUsers: io.engine.clientsCount
     });
   }
-}, 5000);
+}, 30000); // 每30秒一次
 
 // 健康檢查端點
 app.get('/health', (req, res) => {
@@ -260,11 +328,12 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
+    serverTime: Date.now(),
+    uptime: Date.now() - serverStartTime,
     totalCountdowns: countdownItems.length,
     activeCountdowns: activeCountdowns.length,
-    uptime: process.uptime(),
-    timezone: 'Asia/Taipei',
-    connectedUsers: io.engine.clientsCount
+    connectedUsers: io.engine.clientsCount,
+    version: '2.0.0'
   });
 });
 
@@ -278,6 +347,7 @@ app.get('/shared-status', (req, res) => {
     nextId: nextId,
     connectedUsers: io.engine.clientsCount,
     serverTime: now,
+    uptime: now - serverStartTime,
     countdowns: countdownItems.map(item => ({
       id: item.id,
       coordinates: `(${item.x}, ${item.y})`,
@@ -300,7 +370,7 @@ app.use((req, res) => {
   res.status(404).json({ error: '頁面不存在' });
 });
 
-// 優雅關閉 - 保存共享數據
+// 優雅關閉
 process.on('SIGTERM', async () => {
   console.log('收到 SIGTERM 信號，正在保存共享數據...');
   await saveData();
@@ -319,6 +389,15 @@ process.on('SIGINT', async () => {
   });
 });
 
+// 🎯 捕獲未處理的異常
+process.on('uncaughtException', (error) => {
+  console.error('未捕獲的異常:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('未處理的 Promise 拒絕:', reason);
+});
+
 // 啟動服務器
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
@@ -327,5 +406,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🌍 環境: ${process.env.NODE_ENV || 'development'}`);
   console.log(`👥 支持全局共享倒計時協作`);
   console.log(`💾 數據持久化已啟用`);
-  console.log(`🔄 自動同步已啟用`);
+  console.log(`🔄 連接穩定性增強已啟用`);
+  console.log(`⚡ 服務器啟動時間: ${serverStartTime}`);
 });
